@@ -61,19 +61,29 @@ public class AccountsRepositoryInMemory implements AccountsRepository {
 			throw new TransferException("From and To Account Ids should not be same");
 		}
 
-		// Synchronize on 'from' and 'to' accounts to prevent race condition while
+		// Acquire locks 'from' and 'to' accounts to prevent race condition while
 		// updating balances
-		synchronized (fromAccount) {
-			synchronized (toAccount) {
+		try {
+			fromAccount.lock();
+			try {
+				toAccount.lock();
 				// Check if 'from' account has sufficient balance for transfer
 				if (fromAccount.getBalance().compareTo(transferRequest.getTransferAmount()) < 0) {
 					throw new TransferException("Insufficient funds");
 				}
 
 				// Update balances for 'from' and 'to' accounts
+				// Getting latest data if some changes before acquiring lock
+				// Here can implement Version number but not required in this case
+				fromAccount = accounts.get(transferRequest.getFromAccountId());
+				toAccount = accounts.get(transferRequest.getToAccountId());
 				fromAccount.setBalance(fromAccount.getBalance().subtract(transferRequest.getTransferAmount()));
 				toAccount.setBalance(toAccount.getBalance().add(transferRequest.getTransferAmount()));
+			} finally {
+				toAccount.releaseLock();
 			}
+		} finally {
+			fromAccount.releaseLock();
 		}
 
 		// Return an immutable map containing the updated 'from' and 'to' accounts
